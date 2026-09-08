@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+config/style-source.json
+config/system-prompt.md
+config/user-titles.json
+data/memories.json
+data/memories.json.tmp
+data/style-profile.json
+data/style-examples.json
+data/style-report.md
+data/token-usage.json
+data/token-usage.json.tmp
+data/qwen-benchmark.json
+data/qwen-benchmark.md
