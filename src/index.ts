@@ -152,6 +152,8 @@ client.on(Events.MessageCreate, async (message: Message) => {
         console.log(`Web search decision: needsWeb=${needsWeb}, reason=${decision.reason}`);
       } catch (error) {
         console.error("Web search decision failed:", error instanceof Error ? error.message : error);
+        needsWeb = true;
+        seriousAnswer = true;
       }
     }
     if (needsWeb) {

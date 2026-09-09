@@ -13,6 +13,7 @@ test("search router detects explicit and time-sensitive questions", () => {
   assert.equal(shouldSearchWeb("蒸桑拿有什么好处"), true);
   assert.equal(shouldSearchWeb("美国马拉松记录是多少"), true);
   assert.equal(shouldSearchWeb("东北100什么时候开始"), true);
+  assert.equal(shouldSearchWeb("Amex点数转到哪个航空公司最值"), true);
   assert.equal(shouldSearchWeb("讲个冷笑话"), false);
 });
 
