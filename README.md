@@ -121,7 +121,7 @@ npm run extract-style
 @你好小曹 用量
 ```
 
-Bot 会返回累计请求数、输入 Token、输出 Token、总 Token和预估消费金额。对于 `qwen3.8-flash`，按输入 ¥1/百万 Token、输出 ¥3/百万 Token 估算。部分 OpenAI 兼容服务可能不返回 `usage`；这类调用会计入“未返回 Token 数据的请求”，不会使用字符数冒充精确 Token。
+Bot 会返回累计请求数、输入 Token、输出 Token、总 Token和预估消费金额。对于 `deepseek-v4-flash`，按 DeepSeek 官方的北京时间高峰/空闲价格估算；中转站未返回缓存明细时，输入按缓存未命中计算。部分 OpenAI 兼容服务可能不返回 `usage`；这类调用会计入“未返回 Token 数据的请求”，不会使用字符数冒充精确 Token。
 
 ## 长期记忆
 

@@ -18,7 +18,7 @@ import { extractQuestion, splitDiscordMessage } from "./message.js";
 import { loadStyleDescription, loadSystemPrompt } from "./style.js";
 import { getUserTitle, loadUserTitles } from "./user-titles.js";
 import { formatUsage, UsageStore } from "./usage.js";
-import { calculateQwen38FlashCostCny } from "./pricing.js";
+import { calculateModelCostCny } from "./pricing.js";
 import { ensureTitleForSuspiciousReply, isSuspiciousRequest } from "./security.js";
 import {
   formatWebContext,
@@ -143,9 +143,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
           baseUrl: config.llmBaseUrl,
           model: config.llmModel,
         });
-        const decisionCostCny = config.llmModel === "qwen3.8-flash"
-          ? calculateQwen38FlashCostCny(decision.usage)
-          : undefined;
+        const decisionCostCny = calculateModelCostCny(config.llmModel, decision.usage);
         await usageStore.record(decision.usage, decisionCostCny);
         needsWeb = decision.needsWeb;
         if (needsWeb) seriousAnswer = true;
@@ -196,9 +194,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
       clearTimeout(slowNotice);
     }
 
-    const estimatedCostCny = config.llmModel === "qwen3.8-flash"
-      ? calculateQwen38FlashCostCny(result.usage)
-      : undefined;
+    const estimatedCostCny = calculateModelCostCny(config.llmModel, result.usage);
     await usageStore.record(result.usage, estimatedCostCny);
     console.log(
       `LLM usage: input=${result.usage?.promptTokens ?? "unknown"}, ` +
@@ -223,9 +219,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
           baseUrl: config.llmBaseUrl,
           model: config.llmModel,
         });
-        const extractionCostCny = config.llmModel === "qwen3.8-flash"
-          ? calculateQwen38FlashCostCny(extracted.usage)
-          : undefined;
+        const extractionCostCny = calculateModelCostCny(config.llmModel, extracted.usage);
         await usageStore.record(extracted.usage, extractionCostCny);
         for (const memory of extracted.memories) {
           if (isSafeMemoryText(memory)) await memoryStore.remember(message.author.id, memory);
