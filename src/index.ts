@@ -1,7 +1,12 @@
 import "dotenv/config";
 import { resolve } from "node:path";
 import { Client, Events, GatewayIntentBits, Message, PermissionFlagsBits } from "discord.js";
-import { askLlm, extractDurableMemories, LlmTimeoutError } from "./llm.js";
+import {
+  askLlm,
+  decideWebSearch,
+  extractDurableMemories,
+  LlmTimeoutError,
+} from "./llm.js";
 import {
   formatMemories,
   isSafeMemoryText,
@@ -127,10 +132,29 @@ client.on(Events.MessageCreate, async (message: Message) => {
     const userTitle = getUserTitle(message.author.id, userTitles);
     const memories = (await memoryStore.list(message.author.id)).map((item) => item.text);
     const suspiciousRequest = isSuspiciousRequest(question);
-    const seriousAnswer = shouldAnswerSeriously(question);
+    let seriousAnswer = shouldAnswerSeriously(question);
     let webContext: string | undefined;
     let webSearchFailed = false;
-    if (shouldSearchWeb(question)) {
+    let needsWeb = shouldSearchWeb(question);
+    if (!needsWeb) {
+      try {
+        const decision = await decideWebSearch(question, {
+          apiKey: config.llmApiKey,
+          baseUrl: config.llmBaseUrl,
+          model: config.llmModel,
+        });
+        const decisionCostCny = config.llmModel === "qwen3.8-flash"
+          ? calculateQwen38FlashCostCny(decision.usage)
+          : undefined;
+        await usageStore.record(decision.usage, decisionCostCny);
+        needsWeb = decision.needsWeb;
+        if (needsWeb) seriousAnswer = true;
+        console.log(`Web search decision: needsWeb=${needsWeb}, reason=${decision.reason}`);
+      } catch (error) {
+        console.error("Web search decision failed:", error instanceof Error ? error.message : error);
+      }
+    }
+    if (needsWeb) {
       try {
         if (!config.monidApiKey) throw new Error("Missing required environment variable: MONID_API_KEY");
         await progress.edit("🔎 正在搜索网页…");

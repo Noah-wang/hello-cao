@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { askLlm, extractDurableMemories } from "../src/llm.js";
+import { askLlm, decideWebSearch, extractDurableMemories } from "../src/llm.js";
 
 test("askLlm sends only a style prompt and the current question", async () => {
   let sentBody: Record<string, unknown> | undefined;
@@ -102,4 +102,38 @@ test("extractDurableMemories parses a JSON array and returns usage", async () =>
   });
   assert.deepEqual(result.memories, ["用户喜欢咖啡"]);
   assert.equal(result.usage?.totalTokens, 14);
+});
+
+test("decideWebSearch semantically routes a points-transfer question", async () => {
+  let sentBody: Record<string, unknown> | undefined;
+  const fakeFetch: typeof fetch = async (_input, init) => {
+    sentBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: "```json\n{\"needsWeb\":true,\"reason\":\"转点规则和航线会变化\"}\n```" } }],
+      usage: { prompt_tokens: 50, completion_tokens: 12, total_tokens: 62 },
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  const decision = await decideWebSearch("Amex点数转到哪个航空公司最值", {
+    apiKey: "test-key",
+    baseUrl: "https://example.test/v1",
+    model: "test-model",
+    fetchImpl: fakeFetch,
+  });
+  assert.equal(decision.needsWeb, true);
+  assert.equal(decision.reason, "转点规则和航线会变化");
+  assert.equal(decision.usage?.totalTokens, 62);
+  assert.equal(sentBody?.max_tokens, 80);
+});
+
+test("decideWebSearch does not search for creative writing", async () => {
+  const fakeFetch: typeof fetch = async () => new Response(JSON.stringify({
+    choices: [{ message: { content: "{\"needsWeb\":false,\"reason\":\"创作任务\"}" } }],
+  }), { status: 200, headers: { "Content-Type": "application/json" } });
+  const decision = await decideWebSearch("帮我写一个乡村爱情故事", {
+    apiKey: "test-key",
+    baseUrl: "https://example.test/v1",
+    model: "test-model",
+    fetchImpl: fakeFetch,
+  });
+  assert.equal(decision.needsWeb, false);
 });
