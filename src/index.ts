@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { resolve } from "node:path";
 import { Client, Events, GatewayIntentBits, Message, PermissionFlagsBits } from "discord.js";
-import { askLlm, extractDurableMemories } from "./llm.js";
+import { askLlm, extractDurableMemories, LlmTimeoutError } from "./llm.js";
 import {
   formatMemories,
   isSafeMemoryText,
@@ -148,19 +148,27 @@ client.on(Events.MessageCreate, async (message: Message) => {
     } else {
       await progress.edit("💭 正在组织回答…");
     }
-    const result = await askLlm(question, {
-      apiKey: config.llmApiKey,
-      baseUrl: config.llmBaseUrl,
-      model: config.llmModel,
-      styleDescription: config.styleDescription,
-      systemPrompt: config.systemPrompt,
-      userTitle,
-      forceUserTitle: suspiciousRequest,
-      memories,
-      webContext,
-      seriousAnswer,
-      webSearchFailed,
-    });
+    const slowNotice = setTimeout(() => {
+      void progress?.edit("⏳ 模型响应有点慢，正在再试一次…").catch(() => undefined);
+    }, 25_000);
+    let result: Awaited<ReturnType<typeof askLlm>>;
+    try {
+      result = await askLlm(question, {
+        apiKey: config.llmApiKey,
+        baseUrl: config.llmBaseUrl,
+        model: config.llmModel,
+        styleDescription: config.styleDescription,
+        systemPrompt: config.systemPrompt,
+        userTitle,
+        forceUserTitle: suspiciousRequest,
+        memories,
+        webContext,
+        seriousAnswer,
+        webSearchFailed,
+      });
+    } finally {
+      clearTimeout(slowNotice);
+    }
 
     const estimatedCostCny = config.llmModel === "qwen3.8-flash"
       ? calculateQwen38FlashCostCny(result.usage)
@@ -202,8 +210,11 @@ client.on(Events.MessageCreate, async (message: Message) => {
     }
   } catch (error) {
     console.error("Reply failed:", error instanceof Error ? error.message : error);
-    if (progress) await progress.edit("刚才脑子短路了，等一下再问我。" );
-    else await message.reply("刚才脑子短路了，等一下再问我。" );
+    const errorMessage = error instanceof LlmTimeoutError
+      ? "模型接口连续超时了，这次没答出来。过会儿再试。"
+      : "模型接口这次没响应，过会儿再试。";
+    if (progress) await progress.edit(errorMessage);
+    else await message.reply(errorMessage);
   }
 });
 

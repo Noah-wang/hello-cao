@@ -45,7 +45,7 @@ function normalizeSources(value: unknown): WebSource[] {
         typeof result.summary === "string" ? result.summary : "",
         highlights,
         typeof result.text === "string" ? result.text : "",
-      ].filter(Boolean).join("\n").slice(0, 1_800);
+      ].filter(Boolean).join("\n").slice(0, 1_000);
       return {
         title: typeof result.title === "string" ? result.title : url,
         url,
@@ -53,7 +53,7 @@ function normalizeSources(value: unknown): WebSource[] {
       };
     })
     .filter((source): source is WebSource => source !== null)
-    .slice(0, 5);
+    .slice(0, 3);
 }
 
 async function waitForRun(
@@ -93,8 +93,8 @@ export async function searchWeb(question: string, config: MonidConfig): Promise<
       input: {
         query: question,
         type: "auto",
-        numResults: 5,
-        contents: { text: { maxCharacters: 1_500 } },
+        numResults: 3,
+        contents: { text: { maxCharacters: 900 } },
       },
     }),
     signal: AbortSignal.timeout(60_000),

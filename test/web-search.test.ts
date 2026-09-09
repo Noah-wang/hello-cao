@@ -41,6 +41,7 @@ test("searchWeb calls Monid Exa and normalizes sources", async () => {
   const sources = await searchWeb("测试", { apiKey: "test-key", fetchImpl: fakeFetch });
   assert.equal((requestBody?.provider as string), "exa");
   assert.equal((requestBody?.endpoint as string), "/search");
+  assert.equal((requestBody?.input as { numResults: number }).numResults, 3);
   assert.deepEqual(sources, [{
     title: "官方页面",
     url: "https://example.com/docs",

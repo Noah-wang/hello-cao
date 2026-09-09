@@ -44,6 +44,7 @@ test("askLlm sends only a style prompt and the current question", async () => {
     cacheMissTokens: 8,
   });
   assert.equal(sentBody?.model, "test-model");
+  assert.equal(sentBody?.max_tokens, 800);
   assert.equal("tools" in (sentBody ?? {}), false);
   assert.deepEqual(
     (sentBody?.messages as Array<{ role: string }>).map((message) => message.role),
@@ -59,10 +60,12 @@ test("askLlm sends only a style prompt and the current question", async () => {
   assert.match(JSON.stringify(sentBody?.messages), /\[1\]/);
 });
 
-test("askLlm retries once after a timeout", async () => {
+test("askLlm retries once with a compact request after a timeout", async () => {
   let attempts = 0;
-  const fakeFetch: typeof fetch = async () => {
+  const sentBodies: Array<Record<string, unknown>> = [];
+  const fakeFetch: typeof fetch = async (_input, init) => {
     attempts += 1;
+    sentBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
     if (attempts === 1) throw new DOMException("timed out", "AbortError");
     return new Response(
       JSON.stringify({ choices: [{ message: { content: "第二次成功" } }] }),
@@ -78,6 +81,9 @@ test("askLlm retries once after a timeout", async () => {
   });
   assert.equal(result.text, "第二次成功");
   assert.equal(attempts, 2);
+  assert.equal(sentBodies[0]?.max_tokens, 800);
+  assert.equal(sentBodies[1]?.max_tokens, 500);
+  assert.match(JSON.stringify(sentBodies[1]?.messages), /请直接给出精炼答案/);
 });
 
 test("extractDurableMemories parses a JSON array and returns usage", async () => {
