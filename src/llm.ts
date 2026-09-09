@@ -58,6 +58,12 @@ interface CompletionRequestOptions {
   retryBody?: Record<string, unknown>;
 }
 
+function nonThinkingOptions(model: string): Record<string, unknown> {
+  return model === "deepseek-v4-flash"
+    ? { thinking: { type: "disabled" } }
+    : {};
+}
+
 function isAbortError(error: unknown): boolean {
   return error instanceof Error &&
     (error.name === "AbortError" || error.name === "TimeoutError" || /aborted.*timeout|timed out/iu.test(error.message));
@@ -143,6 +149,7 @@ export async function askLlm(question: string, config: LlmConfig): Promise<LlmRe
   ].join("\n");
   const body = {
       model: config.model,
+      ...nonThinkingOptions(config.model),
       messages: [
         {
           role: "system",
@@ -203,6 +210,7 @@ export async function decideWebSearch(
   const endpoint = `${config.baseUrl.replace(/\/$/, "")}/chat/completions`;
   const data = await postChatCompletion(request, endpoint, config.apiKey, {
     model: config.model,
+    ...nonThinkingOptions(config.model),
     messages: [
       {
         role: "system",
@@ -256,6 +264,7 @@ export async function extractDurableMemories(
   const endpoint = `${config.baseUrl.replace(/\/$/, "")}/chat/completions`;
   const data = await postChatCompletion(request, endpoint, config.apiKey, {
       model: config.model,
+      ...nonThinkingOptions(config.model),
       messages: [
         {
           role: "system",

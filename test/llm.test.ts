@@ -24,7 +24,7 @@ test("askLlm sends only a style prompt and the current question", async () => {
   const answer = await askLlm("你好", {
     apiKey: "test-key",
     baseUrl: "https://example.test/v1/",
-    model: "test-model",
+    model: "deepseek-v4-flash",
     styleDescription: "短句，冷幽默",
     systemPrompt: "{{STYLE_PROFILE}}\n{{USER_TITLE_GUIDANCE}}",
     userTitle: "老张",
@@ -43,7 +43,8 @@ test("askLlm sends only a style prompt and the current question", async () => {
     cacheHitTokens: 12,
     cacheMissTokens: 8,
   });
-  assert.equal(sentBody?.model, "test-model");
+  assert.equal(sentBody?.model, "deepseek-v4-flash");
+  assert.deepEqual(sentBody?.thinking, { type: "disabled" });
   assert.equal(sentBody?.max_tokens, 800);
   assert.equal("tools" in (sentBody ?? {}), false);
   assert.deepEqual(
@@ -75,7 +76,7 @@ test("askLlm retries once with a compact request after a timeout", async () => {
   const result = await askLlm("认真回答", {
     apiKey: "test-key",
     baseUrl: "https://example.test/v1",
-    model: "test-model",
+    model: "deepseek-v4-flash",
     styleDescription: "短句",
     fetchImpl: fakeFetch,
   });
@@ -83,6 +84,8 @@ test("askLlm retries once with a compact request after a timeout", async () => {
   assert.equal(attempts, 2);
   assert.equal(sentBodies[0]?.max_tokens, 800);
   assert.equal(sentBodies[1]?.max_tokens, 500);
+  assert.deepEqual(sentBodies[0]?.thinking, { type: "disabled" });
+  assert.deepEqual(sentBodies[1]?.thinking, { type: "disabled" });
   assert.match(JSON.stringify(sentBodies[1]?.messages), /请直接给出精炼答案/);
 });
 
@@ -97,7 +100,7 @@ test("extractDurableMemories parses a JSON array and returns usage", async () =>
   const result = await extractDurableMemories("我喜欢咖啡", {
     apiKey: "test-key",
     baseUrl: "https://example.test/v1",
-    model: "test-model",
+    model: "deepseek-v4-flash",
     fetchImpl: fakeFetch,
   });
   assert.deepEqual(result.memories, ["用户喜欢咖啡"]);
@@ -116,13 +119,14 @@ test("decideWebSearch semantically routes a points-transfer question", async () 
   const decision = await decideWebSearch("Amex点数转到哪个航空公司最值", {
     apiKey: "test-key",
     baseUrl: "https://example.test/v1",
-    model: "test-model",
+    model: "deepseek-v4-flash",
     fetchImpl: fakeFetch,
   });
   assert.equal(decision.needsWeb, true);
   assert.equal(decision.reason, "转点规则和航线会变化");
   assert.equal(decision.usage?.totalTokens, 62);
   assert.equal(sentBody?.max_tokens, 80);
+  assert.deepEqual(sentBody?.thinking, { type: "disabled" });
 });
 
 test("decideWebSearch does not search for creative writing", async () => {
