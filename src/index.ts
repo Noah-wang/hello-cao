@@ -2,6 +2,12 @@ import "dotenv/config";
 import { resolve } from "node:path";
 import { Client, Events, GatewayIntentBits, Message, PermissionFlagsBits } from "discord.js";
 import {
+  extractBilibiliInput,
+  formatBilibiliContext,
+  loadBilibiliCredential,
+  readBilibiliVideo,
+} from "./bilibili.js";
+import {
   askLlm,
   decideWebSearch,
   extractDurableMemories,
@@ -51,6 +57,10 @@ const config = {
   ),
   monidApiKey: process.env.MONID_API_KEY?.trim(),
   monidBaseUrl: process.env.MONID_BASE_URL?.trim() || "https://api.monid.ai",
+  bilibiliCredentialPath: resolve(
+    process.env.BILIBILI_CREDENTIAL_PATH?.trim() || "config/bilibili-credentials.toml",
+  ),
+  bilibiliTimeoutMs: Number.parseInt(process.env.BILIBILI_TIMEOUT_MS?.trim() || "20000", 10),
 };
 
 const client = new Client({
@@ -135,12 +145,36 @@ client.on(Events.MessageCreate, async (message: Message) => {
     const userTitle = getUserTitle(message.author.id, userTitles);
     const memories = (await memoryStore.list(message.author.id)).map((item) => item.text);
     const suspiciousRequest = isSuspiciousRequest(question);
-    const predictionRequest = isPredictionQuestion(question);
+    const bilibiliInput = extractBilibiliInput(question);
+    let answerQuestion = question;
+    const predictionRequest = !bilibiliInput && isPredictionQuestion(question);
     let seriousAnswer = shouldAnswerSeriously(question);
     let webContext: string | undefined;
+    let videoContext: string | undefined;
     let webSearchFailed = false;
-    let needsWeb = shouldSearchWeb(question);
-    if (!needsWeb) {
+    let needsWeb = !bilibiliInput && shouldSearchWeb(question);
+    if (bilibiliInput) {
+      seriousAnswer = true;
+      answerQuestion = bilibiliInput.question || "请总结这个视频的主要内容、核心观点和结论。";
+      try {
+        await progress.edit("🎬 正在读取B站视频信息和字幕…");
+        const credential = await loadBilibiliCredential(config.bilibiliCredentialPath);
+        const video = await readBilibiliVideo(bilibiliInput.reference, {
+          credential,
+          timeoutMs: Number.isFinite(config.bilibiliTimeoutMs) && config.bilibiliTimeoutMs > 0
+            ? config.bilibiliTimeoutMs
+            : 20_000,
+        });
+        videoContext = formatBilibiliContext(video);
+        await progress.edit(video.subtitleAvailable
+          ? `📝 已读取《${video.info.title}》字幕，正在整理回答…`
+          : `⚠️ 《${video.info.title}》没有可用字幕，正在根据标题和简介回答…`);
+      } catch (error) {
+        console.error("Bilibili read failed:", error instanceof Error ? error.message : error);
+        await progress.edit(`读取B站视频失败：${error instanceof Error ? error.message : "未知错误"}`);
+        return;
+      }
+    } else if (!needsWeb) {
       try {
         const decision = await decideWebSearch(question, {
           apiKey: config.llmApiKey,
@@ -158,7 +192,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
         seriousAnswer = true;
       }
     }
-    if (needsWeb) {
+    if (!bilibiliInput && needsWeb) {
       try {
         if (!config.monidApiKey) throw new Error("Missing required environment variable: MONID_API_KEY");
         await progress.edit("🔎 正在搜索网页…");
@@ -225,7 +259,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
     }, 25_000);
     let result: Awaited<ReturnType<typeof askLlm>>;
     try {
-      result = await askLlm(question, {
+      result = await askLlm(answerQuestion, {
         apiKey: config.llmApiKey,
         baseUrl: config.llmBaseUrl,
         model: config.llmModel,
@@ -235,6 +269,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
         forceUserTitle: suspiciousRequest,
         memories,
         webContext,
+        videoContext,
         seriousAnswer,
         predictionRequest,
         webSearchFailed,
@@ -261,7 +296,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
     await progress.edit({ content: chunks[0], allowedMentions: { repliedUser: false } });
     for (const chunk of chunks.slice(1)) await message.channel.send(chunk);
 
-    if (mayContainDurableMemory(question)) {
+    if (!bilibiliInput && mayContainDurableMemory(question)) {
       try {
         const extracted = await extractDurableMemories(question, {
           apiKey: config.llmApiKey,

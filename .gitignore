@@ -6,6 +6,7 @@ dist/
 config/style-source.json
 config/system-prompt.md
 config/user-titles.json
+config/bilibili-credentials.toml
 data/memories.json
 data/memories.json.tmp
 data/style-profile.json

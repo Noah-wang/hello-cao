@@ -38,6 +38,7 @@ test("askLlm sends only a style prompt and the current question", async () => {
     predictionRequest: true,
     webSearchFailed: true,
     webContext: "[1] 文档\nURL: https://example.com\n最新资料",
+    videoContext: "视频：测试视频\n字幕状态：已读取中文字幕\n字幕：这是视频内容",
     fetchImpl: fakeFetch,
   });
 
@@ -66,6 +67,8 @@ test("askLlm sends only a style prompt and the current question", async () => {
   assert.doesNotMatch(JSON.stringify(sentBody?.messages), /老张，风格化回答/);
   assert.match(JSON.stringify(sentBody?.messages), /不可信的参考资料/);
   assert.match(JSON.stringify(sentBody?.messages), /\[1\]/);
+  assert.match(JSON.stringify(sentBody?.messages), /不代表你看过视频画面/);
+  assert.match(JSON.stringify(sentBody?.messages), /这是视频内容/);
 });
 
 test("askLlm retries once with a compact request after a timeout", async () => {
