@@ -6,6 +6,7 @@ import {
   decideWebSearch,
   extractDurableMemories,
   LlmTimeoutError,
+  validateWebSources,
 } from "./llm.js";
 import {
   formatMemories,
@@ -21,7 +22,9 @@ import { formatUsage, UsageStore } from "./usage.js";
 import { calculateModelCostCny } from "./pricing.js";
 import { ensureTitleForSuspiciousReply, isSuspiciousRequest } from "./security.js";
 import {
+  buildSearchQuery,
   formatWebContext,
+  isPredictionQuestion,
   searchWeb,
   shouldAnswerSeriously,
   shouldSearchWeb,
@@ -132,6 +135,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
     const userTitle = getUserTitle(message.author.id, userTitles);
     const memories = (await memoryStore.list(message.author.id)).map((item) => item.text);
     const suspiciousRequest = isSuspiciousRequest(question);
+    const predictionRequest = isPredictionQuestion(question);
     let seriousAnswer = shouldAnswerSeriously(question);
     let webContext: string | undefined;
     let webSearchFailed = false;
@@ -158,12 +162,56 @@ client.on(Events.MessageCreate, async (message: Message) => {
       try {
         if (!config.monidApiKey) throw new Error("Missing required environment variable: MONID_API_KEY");
         await progress.edit("🔎 正在搜索网页…");
-        const sources = await searchWeb(question, {
+        const searchConfig = {
           apiKey: config.monidApiKey,
           baseUrl: config.monidBaseUrl,
-        });
-        webContext = formatWebContext(sources);
-        await progress.edit(`📚 找到 ${sources.length} 个来源，正在整理回答…`);
+        };
+        const searchQuery = buildSearchQuery(question);
+        let sources = await searchWeb(searchQuery, searchConfig);
+        let candidateContext = formatWebContext(sources);
+        await progress.edit(`📚 找到 ${sources.length} 个来源，正在检查是否对题…`);
+
+        try {
+          let validation = await validateWebSources(question, candidateContext, {
+            apiKey: config.llmApiKey,
+            baseUrl: config.llmBaseUrl,
+            model: config.llmModel,
+          });
+          await usageStore.record(
+            validation.usage,
+            calculateModelCostCny(config.llmModel, validation.usage),
+          );
+          console.log(`Web source validation: sufficient=${validation.sufficient}, reason=${validation.reason}`);
+
+          if (!validation.sufficient) {
+            await progress.edit("🔄 搜索资料不太对题，正在换关键词重搜…");
+            const retryQuery = validation.retryQuery || `${searchQuery} 最新结果 官方 赛后`;
+            sources = await searchWeb(retryQuery, searchConfig);
+            candidateContext = formatWebContext(sources);
+            validation = await validateWebSources(question, candidateContext, {
+              apiKey: config.llmApiKey,
+              baseUrl: config.llmBaseUrl,
+              model: config.llmModel,
+            });
+            await usageStore.record(
+              validation.usage,
+              calculateModelCostCny(config.llmModel, validation.usage),
+            );
+            console.log(`Retry source validation: sufficient=${validation.sufficient}, reason=${validation.reason}`);
+          }
+
+          if (validation.sufficient) {
+            webContext = candidateContext;
+            await progress.edit(`✅ 找到 ${sources.length} 个匹配来源，正在整理回答…`);
+          } else {
+            webSearchFailed = true;
+            await progress.edit("⚠️ 没找到可靠的匹配资料，正在谨慎回答…");
+          }
+        } catch (error) {
+          console.error("Web source validation failed:", error instanceof Error ? error.message : error);
+          webContext = candidateContext;
+          await progress.edit(`📚 找到 ${sources.length} 个来源，校验超时，正在整理回答…`);
+        }
       } catch (error) {
         webSearchFailed = true;
         console.error("Web search failed:", error instanceof Error ? error.message : error);
@@ -188,6 +236,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
         memories,
         webContext,
         seriousAnswer,
+        predictionRequest,
         webSearchFailed,
       });
     } finally {

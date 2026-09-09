@@ -1,11 +1,28 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildSearchQuery,
   formatWebContext,
+  isPredictionQuestion,
   searchWeb,
   shouldAnswerSeriously,
   shouldSearchWeb,
 } from "../src/web-search.js";
+
+test("builds an explicit post-match search query", () => {
+  assert.equal(
+    buildSearchQuery("点评一下今天利物浦欧冠上的表现", new Date("2026-09-09T12:00:00Z")),
+    "点评一下今天利物浦欧冠上的表现 2026-09-09 全场比分 赛后战报 球员评分",
+  );
+});
+
+test("builds a prediction search query and detects prediction intent", () => {
+  assert.equal(isPredictionQuestion("预测一下拜仁踢利物浦的比分"), true);
+  assert.equal(
+    buildSearchQuery("预测一下拜仁踢利物浦的比分", new Date("2026-09-09T12:00:00Z")),
+    "预测一下拜仁踢利物浦的比分 近期状态 伤病 预计阵容",
+  );
+});
 
 test("search router detects explicit and time-sensitive questions", () => {
   assert.equal(shouldSearchWeb("帮我查一下 DeepSeek 价格"), true);

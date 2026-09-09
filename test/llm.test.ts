@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { askLlm, decideWebSearch, extractDurableMemories } from "../src/llm.js";
+import {
+  askLlm,
+  decideWebSearch,
+  extractDurableMemories,
+  validateWebSources,
+} from "../src/llm.js";
 
 test("askLlm sends only a style prompt and the current question", async () => {
   let sentBody: Record<string, unknown> | undefined;
@@ -30,6 +35,7 @@ test("askLlm sends only a style prompt and the current question", async () => {
     userTitle: "老张",
     memories: ["用户喜欢咖啡"],
     seriousAnswer: true,
+    predictionRequest: true,
     webSearchFailed: true,
     webContext: "[1] 文档\nURL: https://example.com\n最新资料",
     fetchImpl: fakeFetch,
@@ -55,6 +61,7 @@ test("askLlm sends only a style prompt and the current question", async () => {
   assert.match(JSON.stringify(sentBody?.messages), /老张/);
   assert.match(JSON.stringify(sentBody?.messages), /用户喜欢咖啡/);
   assert.match(JSON.stringify(sentBody?.messages), /认真事实问答/);
+  assert.match(JSON.stringify(sentBody?.messages), /应给出一个清晰的主观判断或比分预测/);
   assert.match(JSON.stringify(sentBody?.messages), /实时信息尚未核实/);
   assert.doesNotMatch(JSON.stringify(sentBody?.messages), /老张，风格化回答/);
   assert.match(JSON.stringify(sentBody?.messages), /不可信的参考资料/);
@@ -140,4 +147,36 @@ test("decideWebSearch does not search for creative writing", async () => {
     fetchImpl: fakeFetch,
   });
   assert.equal(decision.needsWeb, false);
+});
+
+test("source validator accepts matching post-match reports", async () => {
+  const fakeFetch: typeof fetch = async () => new Response(JSON.stringify({
+    choices: [{ message: { content: '{"sufficient":true,"reason":"包含全场比分和赛后表现"}' } }],
+    usage: { prompt_tokens: 80, completion_tokens: 15, total_tokens: 95 },
+  }), { status: 200, headers: { "Content-Type": "application/json" } });
+  const validation = await validateWebSources(
+    "点评一下今天利物浦欧冠上的表现",
+    "利物浦2-1取胜。全场结束后主教练接受采访。",
+    { apiKey: "test-key", baseUrl: "https://example.test/v1", model: "deepseek-v4-flash", fetchImpl: fakeFetch },
+  );
+  assert.equal(validation.sufficient, true);
+  assert.equal(validation.usage?.totalTokens, 95);
+});
+
+test("source validator rejects pre-match material and supplies a retry query", async () => {
+  let sentBody: Record<string, unknown> | undefined;
+  const fakeFetch: typeof fetch = async (_input, init) => {
+    sentBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: '{"sufficient":false,"reason":"只有赛前前瞻","retryQuery":"2026-09-09 利物浦 欧冠 全场比分 赛后战报"}' } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  const validation = await validateWebSources(
+    "点评一下今天利物浦欧冠上的表现",
+    "赛前预测利物浦可能2-1取胜，新援或迎来首秀。",
+    { apiKey: "test-key", baseUrl: "https://example.test/v1", model: "deepseek-v4-flash", fetchImpl: fakeFetch },
+  );
+  assert.equal(validation.sufficient, false);
+  assert.equal(validation.retryQuery, "2026-09-09 利物浦 欧冠 全场比分 赛后战报");
+  assert.deepEqual(sentBody?.thinking, { type: "disabled" });
 });

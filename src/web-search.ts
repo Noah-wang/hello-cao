@@ -14,6 +14,34 @@ const SEARCH_TRIGGER = /(?:搜索|搜一下|查一下|查查|最新|今天|今�
 
 const SERIOUS_TRIGGER = /(?:有什么好处|有什么坏处|为什么|原理|怎么(?:做|办|解决|治疗|使用)|多少|几号|什么时候|何时|纪录|记录|数据|法律|合同|税|投资|价格|医疗|健康|疾病|症状|药物|用药|治疗|体检|血压|血糖|心率|桑拿|比赛|赛事|马拉松|越野赛|代码|编程|数据库|Docker|API)/iu;
 
+const PREDICTION_TRIGGER = /(?:预测|预估|猜(?:一下)?|看好谁|几比几|比分会是|谁会赢)/iu;
+const POST_MATCH_TRIGGER = /(?:点评|复盘|赛后|表现|踢得|打得|全场|刚刚|刚结束)/iu;
+const RELATIVE_DATE_TRIGGER = /(?:今天|今日|刚刚|刚才|昨(?:天|日)|今早|今晚|今夜)/iu;
+
+function beijingDate(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+export function isPredictionQuestion(question: string): boolean {
+  return PREDICTION_TRIGGER.test(question);
+}
+
+export function buildSearchQuery(question: string, date = new Date()): string {
+  if (isPredictionQuestion(question)) {
+    return `${question} 近期状态 伤病 预计阵容`;
+  }
+  if (POST_MATCH_TRIGGER.test(question)) {
+    const explicitDate = RELATIVE_DATE_TRIGGER.test(question) ? ` ${beijingDate(date)}` : "";
+    return `${question}${explicitDate} 全场比分 赛后战报 球员评分`;
+  }
+  return question;
+}
+
 export function shouldSearchWeb(question: string): boolean {
   return SEARCH_TRIGGER.test(question);
 }
